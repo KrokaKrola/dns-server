@@ -208,6 +208,7 @@ class DnsAnswer {
 
 udpSocket.on("message", (buf, rinfo) => {
     try {
+        console.log('done previously 🙂')
         const dnsHeader = new DnsHeader(buf.subarray(0, 12));
         const dnsQuestion = new DnsQuestion(buf.subarray(12));
         const dnsAnswer = new DnsAnswer(dnsQuestion.qname);
