@@ -73,6 +73,7 @@ class DnsHeader {
 
     packHeaderForResponse() {
         const buf = Buffer.alloc(12);
+        const rCode = 4;
         buf.writeUInt16BE(this.id, 0);
         buf.writeUInt16BE(
             (1 << 15) |
@@ -82,7 +83,7 @@ class DnsHeader {
             (this.rd << 8) |
             (this.ra << 7) |
             (this.z << 4) |
-            this.rcode,
+            rCode,
             2
         );
         buf.writeUInt16BE(this.qdcount, 4);
