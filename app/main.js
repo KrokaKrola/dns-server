@@ -16,16 +16,24 @@ class DnsMessage {
      */
     questions = [];
 
-    constructor(dnsHeader, dnsQuestions) {
+    /**
+     *
+     * @type {DnsAnswer}
+     */
+    dnsAnswer = null;
+
+    constructor(dnsHeader, dnsQuestions, dnsAnswer) {
         this.header = dnsHeader;
         this.questions = dnsQuestions;
+        this.dnsAnswer = dnsAnswer;
     }
 
     packMessage() {
         const header = new Uint8Array(this.header.packHeaderForResponse());
         const question = new Uint8Array(this.questions[0].packQuestionForResponse());
+        const answer = new Uint8Array(this.dnsAnswer.packAnswerForResponse());
 
-        return Buffer.concat([header, question]);
+        return Buffer.concat([header, question, answer]);
     }
 
 }
@@ -42,7 +50,7 @@ class DnsHeader {
     rcode = 0;
     // assuming that we always have 1 question
     qdcount = 1;
-    ancount = 0;
+    ancount = 1;
     nscount = 0;
     arcount = 0;
 
@@ -145,18 +153,69 @@ class DnsQuestion {
 
         return buffer;
     }
+}
 
+class DnsAnswer {
+    name = "";
+    type = 1; // type A
+    class = 1; // type IN
+    ttl = 60;
+    rdata = new Buffer.from([8, 8, 8, 8]).toString();
+
+    constructor(name) {
+        this.name = name;
+    }
+
+    #encodeName(string) {
+        const labels = string.split('.');
+        const buffer = Buffer.alloc(string.length + 2); // +2 for the null byte and extra length byte
+        let offset = 0;
+
+        labels.forEach(label => {
+            buffer.writeUInt8(label.length, offset++);
+            buffer.write(label, offset);
+            offset += label.length;
+        });
+
+        buffer.writeUInt8(0, offset); // Null byte to terminate the domain name
+        return buffer;
+    }
+
+    packAnswerForResponse() {
+        const domain = this.#encodeName(this.name);
+        // domain length + 2 bytes for type,
+        // + 2 bytes for class,
+        // + 4 bytes for ttl,
+        // + 2 bytes for rdata length,
+        // + 4 for rdata length
+        const buffer = Buffer.alloc(domain.length + 14);
+        domain.copy(buffer); // copy the encoded domain name to the buffer
+        let offset = domain.length;
+        buffer.writeUInt16BE(this.type, offset);
+        offset += 2;
+        buffer.writeUInt16BE(this.class, offset);
+        offset += 2;
+        buffer.writeUint32BE(this.ttl, offset);
+        offset += 4;
+        buffer.writeUInt16BE(this.rdata.length, offset);
+        offset += 2;
+        buffer.write(this.rdata, offset);
+
+        return buffer;
+    }
 }
 
 udpSocket.on("message", (buf, rinfo) => {
     try {
         const dnsHeader = new DnsHeader(buf.subarray(0, 12));
         const dnsQuestion = new DnsQuestion(buf.subarray(12));
+        const dnsAnswer = new DnsAnswer(dnsQuestion.qname);
 
-        const message = new DnsMessage(dnsHeader, [dnsQuestion]);
+        const message = new DnsMessage(dnsHeader, [dnsQuestion], dnsAnswer);
         udpSocket.send(message.packMessage(), rinfo.port, rinfo.address);
     } catch (e) {
         console.log(`Error receiving data: ${e}`);
+        console.log(e.stack);
     }
 });
 
